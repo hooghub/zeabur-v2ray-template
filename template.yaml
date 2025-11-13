@@ -2,38 +2,20 @@
 apiVersion: zeabur.com/v1
 kind: Template
 metadata:
-  name: v2ray
-spec:
-  description: A V2Ray + Nginx WebSocket proxy for Zeabur with automatic HTTPS and UUID configuration.
+  name: v2ray-nginx-zeabur
+  description: 一个为 Zeabur 优化的 V2Ray + Nginx 部署模板，支持 WebSocket + TLS 自动反代。
   icon: https://raw.githubusercontent.com/2dust/v2rayN/refs/heads/master/v2rayN/v2rayN/Resources/v2rayN.ico
+spec:
   variables:
-    - key: NGINX_DOMAIN
+    - key: DOMAIN
+      name: 自定义域名
+      description: 绑定的 Zeabur 公网域名（自动签发 HTTPS）
       type: DOMAIN
-      name: Nginx Domain
-      description: Your domain to be bound with Nginx (Zeabur will issue HTTPS automatically)
     - key: V2RAY_UUID
+      name: V2Ray 用户 UUID
+      description: 代理用户的唯一标识符
       type: STRING
-      name: V2Ray User ID (UUID)
-      description: Custom V2Ray user ID (UUID). You can generate one at https://www.uuidgenerator.net/
-  readme: |
-    # V2Ray Proxy (Zeabur Edition)
-    ## Configuration Steps
-    1. Generate a UUID from [uuidgenerator.net](https://www.uuidgenerator.net/).
-    2. Enter it during deployment as V2Ray User ID.
-    3. Zeabur will automatically start V2Ray and Nginx with HTTPS.
-
-    ## Client Setup
-    - Protocol: vmess  
-    - Address: your domain  
-    - Port: 443  
-    - UUID: (the one you entered)  
-    - Transport: ws  
-    - Path: /ws  
-    - TLS: on
-
-    ## Notes
-    - This service is for personal or educational use only.
-    - Zeabur automatically handles HTTPS.
+      default: auto
 
   services:
     - name: v2ray
@@ -41,31 +23,31 @@ spec:
       template: PREBUILT_V2
       spec:
         source:
-          image: teddysun/v2ray:latest
+          image: teddysun/xray:latest
         ports:
-          - id: v2port
+          - id: v2ray_port
             port: 1080
-            type: HTTP
+            type: TCP
         configs:
-          - path: /etc/v2ray/config.json
+          - path: /etc/xray/config.json
             template: |-
               {
                 "inbounds": [
                   {
                     "port": 1080,
-                    "protocol": "vmess",
+                    "protocol": "vless",
                     "settings": {
                       "clients": [
                         {
-                          "id": "${V2RAY_UUID}",
-                          "alterId": 0
+                          "id": "${V2RAY_UUID}"
                         }
-                      ]
+                      ],
+                      "decryption": "none"
                     },
                     "streamSettings": {
                       "network": "ws",
                       "wsSettings": {
-                        "path": "/ws"
+                        "path": "/"
                       }
                     }
                   }
@@ -76,60 +58,57 @@ spec:
                   }
                 ]
               }
-            envsubst: true
 
     - name: nginx
       icon: https://www.svgrepo.com/show/373924/nginx.svg
       template: PREBUILT_V2
+      domainKey: DOMAIN
       spec:
         source:
-          image: library/nginx:1.27
+          image: nginx:alpine
         ports:
           - id: web
-            port: 443
-            type: HTTPS
-        volumes:
-          - id: html
-            dir: /usr/share/nginx/html
+            port: 80
+            type: HTTP
         configs:
-          - path: /etc/nginx/nginx.conf
+          - path: /etc/nginx/conf.d/default.conf
             template: |-
-              worker_processes  5;
-              error_log  stderr;
-              worker_rlimit_nofile 8192;
-              events {}
+              server {
+                  listen 80;
+                  server_name ${DOMAIN};
 
-              http {
-                  default_type application/octet-stream;
-                  log_format   main '$remote_addr - $remote_user [$time_local]  $status '
-                      '"$request" $body_bytes_sent "$http_referer" '
-                      '"$http_user_agent" "$http_x_forwarded_for"';
-                  access_log   /dev/stdout  main;
-                  sendfile     on;
-                  tcp_nopush   on;
-                  server_names_hash_bucket_size 128;
-
-                  server {
-                      listen 443 ssl;
-                      server_name _;
-                      ssl_certificate /etc/nginx/certs/fullchain.pem;
-                      ssl_certificate_key /etc/nginx/certs/privkey.pem;
-
-                      location / {
-                          root /usr/share/nginx/html;
-                          index index.html index.htm;
-                      }
-
-                      location /ws {
-                          proxy_redirect off;
-                          proxy_pass http://v2ray.zeabur.internal:1080;
-                          proxy_http_version 1.1;
-                          proxy_set_header Upgrade $http_upgrade;
-                          proxy_set_header Connection "upgrade";
-                          proxy_set_header Host $http_host;
-                          proxy_set_header X-Real-IP $remote_addr;
-                          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-                      }
+                  location / {
+                      proxy_pass http://v2ray.zeabur.internal:1080;
+                      proxy_http_version 1.1;
+                      proxy_set_header Upgrade $http_upgrade;
+                      proxy_set_header Connection "upgrade";
+                      proxy_set_header Host $host;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
                   }
               }
-      domainKey: NGINX_DOMAIN
+
+localization:
+  zh-CN:
+    description: 为 Zeabur 优化的 V2Ray + Nginx 模板，自动绑定域名、签发 HTTPS 并支持 WebSocket。
+    readme: |
+      # 🚀 Zeabur V2Ray + Nginx 模板
+
+      本模板可在 Zeabur 平台上一键部署 V2Ray + Nginx 环境，  
+      支持 VLESS + WS + TLS，全自动反代配置。
+
+      ## 🔧 使用步骤
+      1. 在部署时填写：
+         - **DOMAIN**：绑定的 Zeabur 公网域名（如 `kysn.zeabur.app` 或自定义域名）
+         - **V2RAY_UUID**：客户端 UUID（可留空自动生成）
+      2. 部署完成后，Zeabur 自动分配 HTTPS 域名。
+      3. 使用 v2rayN、Shadowrocket 等客户端连接。
+
+      ## ⚙️ 客户端连接配置
+      ```
+      vless://<V2RAY_UUID>@<DOMAIN>:443?encryption=none&security=tls&type=ws&path=/#Zeabur-V2Ray
+      ```
+
+      ## 📦 服务说明
+      - **v2ray**：内部提供代理服务，监听 1080 端口。
+      - **nginx**：对外提供 HTTP(S) 服务，并反代至 v2ray。
