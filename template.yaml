@@ -2,70 +2,41 @@
 apiVersion: zeabur.com/v1
 kind: Template
 metadata:
-  name: v2ray-nginx-zeabur
-  description: 一个为 Zeabur 优化的 V2Ray + Nginx 部署模板，支持 WebSocket + TLS 自动反代。
-  icon: https://raw.githubusercontent.com/2dust/v2rayN/refs/heads/master/v2rayN/v2rayN/Resources/v2rayN.ico
+  name: nginx-internal-proxy
+  description: Zeabur Nginx 模板，支持自定义域名和内部服务反代
+  icon: https://www.svgrepo.com/show/373924/nginx.svg
 spec:
   variables:
     - key: DOMAIN
       name: 自定义域名
       description: 绑定的 Zeabur 公网域名（自动签发 HTTPS）
       type: DOMAIN
-    - key: V2RAY_UUID
-      name: V2Ray 用户 UUID
-      description: 代理用户的唯一标识符
-      type: STRING
-      default: auto
 
   services:
-    - name: v2ray
-      icon: https://raw.githubusercontent.com/2dust/v2rayN/refs/heads/master/v2rayN/v2rayN/Resources/v2rayN.ico
+    - name: app
+      icon: https://www.svgrepo.com/show/332595/api.svg
       template: PREBUILT
       spec:
         source:
-          image: teddysun/xray:latest
+          image: hashicorp/http-echo:latest
         ports:
-          - id: v2ray_port
-            port: 1080
-            type: TCP
+          - id: app_port
+            port: 5678
+            type: HTTP
         configs:
-          - path: /etc/xray/config.json
+          - path: /etc/http-echo/config.json
             template: |-
               {
-                "inbounds": [
-                  {
-                    "port": 1080,
-                    "protocol": "vless",
-                    "settings": {
-                      "clients": [
-                        {
-                          "id": "${V2RAY_UUID}"
-                        }
-                      ],
-                      "decryption": "none"
-                    },
-                    "streamSettings": {
-                      "network": "ws",
-                      "wsSettings": {
-                        "path": "/"
-                      }
-                    }
-                  }
-                ],
-                "outbounds": [
-                  {
-                    "protocol": "freedom"
-                  }
-                ]
+                "text": "Hello from internal app service!"
               }
 
     - name: nginx
       icon: https://www.svgrepo.com/show/373924/nginx.svg
       template: PREBUILT
       spec:
-        domainKey: DOMAIN
         dependsOn:
-          - v2ray
+          - app
+        domainKey: DOMAIN
         source:
           image: nginx:alpine
         ports:
@@ -80,10 +51,8 @@ spec:
                   server_name ${DOMAIN};
 
                   location / {
-                      proxy_pass http://v2ray.zeabur.internal:1080;
+                      proxy_pass http://app.zeabur.internal:5678;
                       proxy_http_version 1.1;
-                      proxy_set_header Upgrade $http_upgrade;
-                      proxy_set_header Connection "upgrade";
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
                       proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -92,25 +61,13 @@ spec:
 
 localization:
   zh-CN:
-    description: 为 Zeabur 优化的 V2Ray + Nginx 模板，自动绑定域名、签发 HTTPS 并支持 WebSocket。
+    description: Zeabur Nginx 模板，可绑定自定义域名，并将内部服务通过反代暴露到外部。
     readme: |
-      # 🚀 Zeabur V2Ray + Nginx 模板
+      # 🚀 Zeabur Nginx + 内部反代模板
 
-      本模板可在 Zeabur 平台上一键部署 V2Ray + Nginx 环境，  
-      支持 VLESS + WS + TLS，全自动反代配置。
+      本模板可在 Zeabur 平台部署 Nginx，并将内部服务通过反代暴露。  
+      支持自定义域名和自动 HTTPS。
 
       ## 🔧 使用步骤
-      1. 在部署时填写：
-         - **DOMAIN**：绑定的 Zeabur 公网域名（如 `kysn.zeabur.app` 或自定义域名）
-         - **V2RAY_UUID**：客户端 UUID（可留空自动生成）
-      2. 部署完成后，Zeabur 自动分配 HTTPS 域名。
-      3. 使用 v2rayN、Shadowrocket 等客户端连接。
-
-      ## ⚙️ 客户端连接配置
-      ```
-      vless://<V2RAY_UUID>@<DOMAIN>:443?encryption=none&security=tls&type=ws&path=/#Zeabur-V2Ray
-      ```
-
-      ## 📦 服务说明
-      - **v2ray**：内部提供代理服务，监听 1080 端口。
-      - **nginx**：对外提供 HTTP(S) 服务，并反代至 v2ray。
+      1. 填写 **DOMAIN** 绑定域名  
+      2. 部署完成后，访问域名即可通过 Nginx 访问内部服务
