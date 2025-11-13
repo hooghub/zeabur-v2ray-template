@@ -3,7 +3,7 @@ apiVersion: zeabur.com/v1
 kind: Template
 metadata:
   name: nginx-internal-proxy
-  description: Zeabur Nginx 模板，支持自定义域名和内部服务反代
+  description: Zeabur Nginx 模板，支持内部服务反代和公网访问
   icon: https://www.svgrepo.com/show/373924/nginx.svg
 spec:
   variables:
@@ -21,7 +21,7 @@ spec:
           image: hashicorp/http-echo:latest
         ports:
           - id: app_port
-            port: 5678
+            port: 8080
             type: HTTP
         configs:
           - path: /etc/http-echo/config.json
@@ -43,6 +43,9 @@ spec:
           - id: web
             port: 80
             type: HTTP
+          - id: web-tcp
+            port: 443
+            type: TCP
         configs:
           - path: /etc/nginx/conf.d/default.conf
             template: |-
@@ -51,7 +54,7 @@ spec:
                   server_name ${DOMAIN};
 
                   location / {
-                      proxy_pass http://app.zeabur.internal:5678;
+                      proxy_pass http://app.zeabur.internal:8080;
                       proxy_http_version 1.1;
                       proxy_set_header Host $host;
                       proxy_set_header X-Real-IP $remote_addr;
@@ -70,4 +73,5 @@ localization:
 
       ## 🔧 使用步骤
       1. 填写 **DOMAIN** 绑定域名  
-      2. 部署完成后，访问域名即可通过 Nginx 访问内部服务
+      2. 部署完成后，Nginx 会自动将外部请求反代到内部服务  
+      3. 激活端口转发后，外网即可通过域名访问服务
